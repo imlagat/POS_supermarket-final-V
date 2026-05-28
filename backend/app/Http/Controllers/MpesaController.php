@@ -12,7 +12,11 @@ class MpesaController extends Controller
     {
         $request->validate([
             'amount' => 'required|numeric|min:1',
-            'phone' => 'required|string',
+            'phone' => [
+                'required',
+                'string',
+                'regex:/^(07|01|2547)\d{8}$/'
+            ],
             'order_id' => 'required|string'
         ]);
 
@@ -60,7 +64,7 @@ class MpesaController extends Controller
 
     $status = $resultCode === 0 ? 'completed' : 'failed';
     Cache::put('mpesa_' . $checkoutId, $status, now()->addMinutes(10));
-    
+
     if ($mpesaCode) {
         Cache::put('mpesa_ref_' . $checkoutId, $mpesaCode, now()->addMinutes(10));
     }

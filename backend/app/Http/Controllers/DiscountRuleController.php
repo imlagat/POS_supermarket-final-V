@@ -20,13 +20,13 @@ class DiscountRuleController extends Controller
             'ends_at' => 'nullable|date',
         ];
 
-        // Conditional validation
         if ($request->type === 'bogo') {
             $rules['product_id'] = 'required|exists:products,id';
             $rules['min_quantity'] = 'nullable|integer|min:1';
             $rules['free_quantity'] = 'nullable|integer|min:1';
             $rules['discount_percentage'] = 'nullable|numeric|min:0|max:100';
             $data = $request->only(['name', 'type', 'is_active', 'starts_at', 'ends_at', 'product_id', 'min_quantity', 'free_quantity', 'discount_percentage']);
+            $data['value'] = 0; // Set default value to avoid DB error
         } elseif ($request->type === 'percentage' || $request->type === 'fixed') {
             $rules['value'] = 'required|numeric|min:0';
             $data = $request->only(['name', 'type', 'value', 'is_active', 'starts_at', 'ends_at']);
@@ -42,6 +42,7 @@ class DiscountRuleController extends Controller
             $rules['days_left_min'] = 'nullable|integer|min:0';
             $rules['days_left_max'] = 'nullable|integer|min:1';
             $data = $request->only(['name', 'type', 'is_active', 'starts_at', 'ends_at', 'discount_percentage', 'days_left_min', 'days_left_max']);
+            $data['value'] = 0;
         } elseif ($request->type === 'seasonal') {
             $rules['discount_percentage'] = 'required|numeric|min:0|max:100';
             $data = $request->only(['name', 'type', 'is_active', 'starts_at', 'ends_at', 'discount_percentage']);
@@ -52,10 +53,12 @@ class DiscountRuleController extends Controller
             if ($request->category) {
                 $data['category'] = $request->category;
             }
+            $data['value'] = 0;
         } elseif ($request->type === 'member_tier') {
             $rules['tier'] = 'required|in:bronze,silver,gold';
             $rules['discount_percentage'] = 'required|numeric|min:0|max:100';
             $data = $request->only(['name', 'type', 'is_active', 'tier', 'discount_percentage']);
+            $data['value'] = 0;
         } else {
             $data = $request->all();
         }
@@ -72,7 +75,7 @@ class DiscountRuleController extends Controller
 
     public function update(Request $request, DiscountRule $discountRule)
     {
-        // Similar validation as store (simplify for brevity – can be implemented similarly)
+        // Simplified update for brevity – you can expand similarly
         $discountRule->update($request->all());
         return $discountRule;
     }

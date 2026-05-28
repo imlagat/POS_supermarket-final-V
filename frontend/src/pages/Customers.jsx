@@ -36,7 +36,10 @@ export default function Customers() {
         toast.success('Customer created');
       }
       fetchCustomers(); resetForm();
-    } catch (err) { toast.error(err.response?.data?.message || 'Error saving customer'); }
+    } catch (err) {
+      const message = err.response?.data?.errors ? Object.values(err.response.data.errors).flat()[0] : err.response?.data?.message || 'Error saving customer';
+      toast.error(message);
+    }
     finally { setSaving(false); }
   };
 
@@ -57,17 +60,56 @@ export default function Customers() {
       <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Plus className="text-amber-500" /> {editing ? 'Edit' : 'Add'} Customer</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <input type="text" placeholder="Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="border p-2 rounded-xl" required />
-          <input type="tel" placeholder="Phone" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="border p-2 rounded-xl" required />
+          <input type="text" placeholder="Name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} pattern="[A-Za-z\s]+" title="Only letters and spaces allowed" className="border p-2 rounded-xl" required />
+          <input type="tel" placeholder="Phone (e.g., 0712345678)" pattern="[0-9]{10,12}" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="border p-2 rounded-xl" required />
           <input type="email" placeholder="Email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="border p-2 rounded-xl" />
-          <div className="flex gap-2"><button type="submit" className="bg-amber-500 text-white px-6 py-2 rounded-xl">{editing ? 'Update' : 'Create'}</button>{editing && <button type="button" onClick={resetForm} className="bg-gray-200 px-4 py-2 rounded-xl">Cancel</button>}</div>
+          <div className="flex gap-2"><button type="submit" disabled={saving} className="bg-amber-500 text-white px-6 py-2 rounded-xl">{saving ? 'Saving...' : (editing ? 'Update' : 'Create')}</button>{editing && <button type="button" onClick={resetForm} className="bg-gray-200 px-4 py-2 rounded-xl">Cancel</button>}</div>
         </form>
       </div>
       <div className="bg-white rounded-2xl shadow-xl overflow-x-auto">
-        <table className="w-full"><thead className="bg-gray-50"><tr><th className="p-4">Name</th><th>Phone</th><th>Tier</th><th>Points</th><th>Actions</th></tr></thead><tbody>{filtered.map(c => (<tr key={c.id} className="border-b"><td className="p-4">{c.name}</td><td className="p-4">{c.phone}</td><td className="capitalize">{c.tier}</td><td className="p-4">{c.points_balance} pts</td><td className="flex gap-2"><button onClick={() => handleEdit(c)} className="text-blue-600"><Edit2 size={18} /></button><button onClick={() => handleDelete(c.id)} className="text-red-600"><Trash2 size={18} /></button><button onClick={() => viewHistory(c)} className="text-green-600"><History size={18} /></button></td></tr>))}</tbody></table>
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr><th className="p-4">Name</th><th>Phone</th><th>Tier</th><th>Points</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {filtered.map(c => (
+              <tr key={c.id} className="border-b">
+                <td className="p-4">{c.name}</td>
+                <td className="p-4">{c.phone}</td>
+                <td className="capitalize">{c.tier}</td>
+                <td className="p-4">{c.points_balance} pts</td>
+                <td className="flex gap-2">
+                  <button onClick={() => handleEdit(c)} className="text-blue-600"><Edit2 size={18} /></button>
+                  <button onClick={() => handleDelete(c.id)} className="text-red-600"><Trash2 size={18} /></button>
+                  <button onClick={() => viewHistory(c)} className="text-green-600"><History size={18} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       {showHistory && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"><div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-auto"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold">{selectedCustomer.name} - Transaction History</h3><button onClick={() => setShowHistory(false)}>✖</button></div><table className="w-full"><thead><tr><th>Date</th><th>Order #</th><th>Total</th><th>Points Earned</th></tr></thead><tbody>{transactions.map(t => (<tr key={t.id}><td>{new Date(t.created_at).toLocaleDateString()}</td><td>{t.order_number}</td><td>Ksh {t.total_amount}</td><td>{Math.floor(t.total_amount / 10)}</td></tr>))}</tbody></table></div></div>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">{selectedCustomer.name} - Transaction History</h3>
+              <button onClick={() => setShowHistory(false)}>✖</button>
+            </div>
+            <table className="w-full">
+              <thead><tr><th>Date</th><th>Order #</th><th>Total</th><th>Points Earned</th></tr></thead>
+              <tbody>
+                {transactions.map(t => (
+                  <tr key={t.id}>
+                    <td>{new Date(t.created_at).toLocaleDateString()}</td>
+                    <td>{t.order_number}</td>
+                    <td>Ksh {t.total_amount}</td>
+                    <td>{Math.floor(t.total_amount / 10)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );

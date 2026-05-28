@@ -36,12 +36,7 @@ export default function Inventory() {
     e.preventDefault();
     setLoading(true);
     try {
-      const payload = {
-        product_id: parseInt(form.product_id),
-        expiry_date: form.expiry_date,
-        quantity: parseInt(form.quantity)
-      };
-      await api.post('/batches', payload);
+      await api.post('/batches', form);
       toast.success('Batch added successfully');
       setForm({ product_id: '', expiry_date: '', quantity: '' });
       fetchAlerts();
@@ -59,10 +54,9 @@ export default function Inventory() {
         <Package className="text-amber-500" /> Inventory Management
       </h1>
 
+      {/* Add Batch Form */}
       <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Plus className="text-amber-500" /> Add New Batch (Batch # auto-generated)
-        </h2>
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Plus className="text-amber-500" /> Add New Batch (Batch # auto-generated)</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <select
             value={form.product_id}
@@ -101,10 +95,9 @@ export default function Inventory() {
         </form>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-xl p-6">
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <AlertTriangle className="text-amber-500" /> Stock & Expiry Alerts
-        </h2>
+      {/* Alerts Section */}
+      <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><AlertTriangle className="text-amber-500" /> Stock & Expiry Alerts</h2>
         {alerts.length === 0 ? (
           <p className="text-gray-500">No alerts – all good!</p>
         ) : (
