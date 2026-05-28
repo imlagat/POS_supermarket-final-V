@@ -12,6 +12,10 @@ use App\Http\Controllers\MpesaController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
+// M-Pesa callback — must be public (no auth) so Safaricom can reach it
+Route::post('/mpesa/callback', [MpesaController::class, 'callback']);
+
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -32,10 +36,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/inventory/alerts', [InventoryController::class, 'alerts']);
     Route::post('/mpesa/stkpush', [MpesaController::class, 'stkPush']);
+    Route::get('/mpesa/status/{checkoutId}', [MpesaController::class, 'checkStatus']);
 
     Route::apiResource('users', UserController::class)->middleware('role:admin');
     Route::post('/batches', [InventoryController::class, 'addBatch'])->middleware('role:admin,manager');
 });
+
+Route::middleware('auth:sanctum')->get('/mpesa/status/{checkoutId}', [MpesaController::class, 'checkStatus']);
 
 Route::middleware('auth:sanctum')->get('/transactions', [App\Http\Controllers\TransactionController::class, 'index']);
 Route::middleware('auth:sanctum')->get('/transactions/{id}', [App\Http\Controllers\TransactionController::class, 'show']);

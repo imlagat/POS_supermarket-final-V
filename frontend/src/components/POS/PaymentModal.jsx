@@ -79,12 +79,35 @@ export default function PaymentModal({ total, onPay, onClose }) {
           setIsProcessing(false);
           return;
         }
+          const orderId = `ORD-${Date.now()}`;
         try {
-          await api.post('/mpesa/stkpush', { amount: total, phone: mpesaPhone, order_id: 'temp' });
-          toast.success('STK push sent');
-          onPay([{ method: 'mpesa', amount: total }]);
+          const response = await api.post('/mpesa/stkpush', { amount: total, phone: mpesaPhone, order_id: orderId });
+          const checkoutId = response.data.checkout_id;
+          
+          toast.success('STK push sent. Waiting for PIN...');
+          
+          // Start polling
+          const interval = setInterval(async () => {
+            try {
+              const statusRes = await api.get(`/mpesa/status/${checkoutId}`);
+              if (statusRes.data.status === 'completed') {
+                clearInterval(interval);
+                toast.success('Payment Received!');
+                onPay([{ method: 'mpesa', amount: total, reference: statusRes.data.mpesa_code }]);
+              } else if (statusRes.data.status === 'failed') {
+                clearInterval(interval);
+                toast.error('Customer cancelled or payment failed.');
+                setIsProcessing(false);
+              }
+            } catch (pollErr) {
+              console.error('Polling error:', pollErr);
+            }
+          }, 3000);
+          
+          return; // Keep spinner active while polling
         } catch (err) {
-          toast.error('M-Pesa failed');
+          const msg = err.response?.data?.error || err.response?.data?.details?.errorMessage || 'M-Pesa request failed';
+          toast.error(msg);
           setIsProcessing(false);
           return;
         }
@@ -132,7 +155,7 @@ export default function PaymentModal({ total, onPay, onClose }) {
               {selectedMethod === 'mpesa' && (
                 <div className="mb-3">
                   <label>M-Pesa Phone Number</label>
-                  <input type="tel" placeholder="254712345678" value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="w-full p-3 border rounded-xl" />
+                  <input type="tel" placeholder="0712345678 or 254712345678" value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="w-full p-3 border rounded-xl" />
                 </div>
               )}
               {showChange && <div className="mt-3 p-3 bg-green-50 rounded-xl flex justify-between"><span>Change</span><span className="font-bold">Ksh {changeAmount.toFixed(2)}</span></div>}

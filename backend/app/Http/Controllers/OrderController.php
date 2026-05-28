@@ -92,13 +92,23 @@ class OrderController extends Controller
             }
 
             foreach ($request->payments as $payment) {
-                Payment::create([
-                    'order_id' => $order->id,
-                    'amount' => $payment['amount'],
-                    'method' => $payment['method'],
-                    'status' => 'completed'
-                ]);
-            }
+    $status = 'completed';
+    $checkoutRequestId = null;
+
+    // M-Pesa starts as pending — callback will mark it completed
+    if ($payment['method'] === 'mpesa') {
+        $status = 'pending';
+        $checkoutRequestId = $payment['checkout_request_id'] ?? null;
+    }
+
+    Payment::create([
+        'order_id'            => $order->id,
+        'amount'              => $payment['amount'],
+        'method'              => $payment['method'],
+        'status'              => $status,
+        'checkout_request_id' => $checkoutRequestId,
+    ]);
+}
 
             if ($request->customer_id) {
                 $customer = Customer::find($request->customer_id);
