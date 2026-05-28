@@ -10,11 +10,15 @@ class MpesaController extends Controller
     {
         $request->validate([
             'amount' => 'required|numeric|min:1',
-            'phone' => 'required|string',
+            'phone' => [
+                'required',
+                'string',
+                'regex:/^(07|01|2547)\d{8}$/'
+            ],
             'order_id' => 'required|string'
         ]);
         
-        // Normalize phone number
+        // Normalize phone number to 2547XXXXXXXX
         $phone = preg_replace('/[^0-9]/', '', $request->phone);
         if (substr($phone, 0, 1) === '0') {
             $phone = '254' . substr($phone, 1);

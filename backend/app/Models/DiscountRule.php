@@ -13,5 +13,6 @@ class DiscountRule extends Model
         'conditions' => 'array',
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
+        'value' => 'float',
     ];
 }

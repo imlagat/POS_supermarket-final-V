@@ -45,7 +45,6 @@ class OrderController extends Controller
         ]);
 
         try {
-            // Start transaction to ensure all changes succeed or rollback
             \DB::beginTransaction();
 
             $order = Order::create([
@@ -61,7 +60,6 @@ class OrderController extends Controller
             ]);
 
             foreach ($request->items as $item) {
-                // Create order item
                 OrderItem::create([
                     'order_id' => $order->id,
                     'product_id' => $item['product_id'],
@@ -70,18 +68,15 @@ class OrderController extends Controller
                     'total' => $item['price'] * $item['quantity']
                 ]);
 
-                // Deduct stock from product's main quantity
+                // Deduct stock
                 $product = Product::find($item['product_id']);
                 if ($product) {
                     $product->decrement('stock_quantity', $item['quantity']);
-
-                    // Deduct from batches (FIFO)
                     $remaining = $item['quantity'];
                     $batches = Batch::where('product_id', $product->id)
                         ->where('quantity', '>', 0)
                         ->orderBy('expiry_date', 'asc')
                         ->get();
-
                     foreach ($batches as $batch) {
                         if ($remaining <= 0) break;
                         $deduct = min($batch->quantity, $remaining);
@@ -103,6 +98,25 @@ class OrderController extends Controller
             if ($request->customer_id) {
                 $customer = Customer::find($request->customer_id);
                 if ($customer) {
+                    // 1. Deduct redeemed points
+                    $pointsRedeemed = (int) floor($request->points_discount ?? 0);
+                    if ($pointsRedeemed > 0) {
+                        if ($customer->points_balance >= $pointsRedeemed) {
+                            $customer->points_balance -= $pointsRedeemed;
+                            $customer->save(); // triggers observer for tier update
+                            LoyaltyTransaction::create([
+                                'customer_id' => $customer->id,
+                                'points' => -$pointsRedeemed,
+                                'type' => 'redeem',
+                                'order_id' => $order->id,
+                                'description' => 'Redeemed points for discount'
+                            ]);
+                        } else {
+                            Log::warning('Insufficient points for redemption', ['customer_id' => $customer->id, 'points' => $pointsRedeemed]);
+                        }
+                    }
+
+                    // 2. Earn points on the actual paid amount (after discounts)
                     $pointsEarned = (int) floor($order->total_amount / 10);
                     if ($pointsEarned > 0) {
                         $customer->points_balance += $pointsEarned;
@@ -119,7 +133,6 @@ class OrderController extends Controller
             }
 
             \DB::commit();
-
             return response()->json(['order' => $order, 'message' => 'Sale completed'], 201);
         } catch (\Exception $e) {
             \DB::rollBack();
