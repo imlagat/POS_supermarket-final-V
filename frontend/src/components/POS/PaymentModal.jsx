@@ -10,6 +10,9 @@ export default function PaymentModal({ total, onPay, onClose }) {
   const [payments, setPayments] = useState([{ method: 'cash', amount: 0 }]);
   const [mpesaPhone, setMpesaPhone] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+
+  const phoneRegex = /^(07|01|2547)\d{8}$/;
 
   const handleCashChange = (value) => {
     const cash = parseFloat(value) || 0;
@@ -34,7 +37,7 @@ export default function PaymentModal({ total, onPay, onClose }) {
     const newPayments = [...payments];
     newPayments[idx][field] = value;
     setPayments(newPayments);
-    const totalPaid = newPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const totalPaid = newPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
     setRemaining(total - totalPaid > 0 ? total - totalPaid : 0);
   };
 
@@ -42,21 +45,69 @@ export default function PaymentModal({ total, onPay, onClose }) {
     if (payments.length <= 1) return;
     const newPayments = payments.filter((_, i) => i !== idx);
     setPayments(newPayments);
-    const totalPaid = newPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const totalPaid = newPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
     setRemaining(total - totalPaid > 0 ? total - totalPaid : 0);
   };
 
+  // ── Polling: onPay is ONLY called from here, after PIN confirmed ──────────
+  const pollForConfirmation = (checkoutId, paymentPayload) => {
+    let attempts = 0;
+    const maxAttempts = 20; // 20 × 3s = 60 seconds
+
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await api.get(`/mpesa/status/${checkoutId}`);
+        const { status, mpesa_code } = res.data;
+
+        if (status === 'completed') {
+          clearInterval(interval);
+          toast.success(`Payment confirmed! Code: ${mpesa_code}`);
+          // ✅ Receipt only fires here — after PIN is confirmed
+          onPay([{ ...paymentPayload, reference: mpesa_code, status: 'completed' }]);
+          setIsProcessing(false);
+          setStatusMessage('');
+        } else if (status === 'failed') {
+          clearInterval(interval);
+          toast.error('M-Pesa payment failed or was cancelled');
+          setIsProcessing(false);
+          setStatusMessage('');
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          toast.error('Payment timed out — please try again');
+          setIsProcessing(false);
+          setStatusMessage('');
+        }
+        // status === 'pending' → keep polling silently
+      } catch {
+        clearInterval(interval);
+        toast.error('Could not verify payment status');
+        setIsProcessing(false);
+        setStatusMessage('');
+      }
+    }, 3000);
+  };
+
+  // ── Main handler ──────────────────────────────────────────────────────────
   const processPayment = async () => {
     setIsProcessing(true);
+
+    // ── SPLIT PAYMENT ────────────────────────────────────────────────────────
     if (split) {
-      let mpesaPayment = payments.find(p => p.method === 'mpesa');
+      const totalPaid = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+      if (Math.abs(totalPaid - total) > 0.01) {
+        toast.error(`Please pay remaining Ksh ${remaining.toFixed(2)}`);
+        setIsProcessing(false);
+        return;
+      }
+
+      const mpesaPayment = payments.find(p => p.method === 'mpesa');
       if (mpesaPayment && mpesaPayment.amount > 0) {
         if (!mpesaPayment.phone) {
           toast.error('Phone number required for M-Pesa');
           setIsProcessing(false);
           return;
         }
-        const phoneRegex = /^(07|01|2547)\d{8}$/;
         if (!phoneRegex.test(mpesaPayment.phone)) {
           toast.error('Invalid phone number format (e.g., 0712345678)');
           setIsProcessing(false);
@@ -66,11 +117,11 @@ export default function PaymentModal({ total, onPay, onClose }) {
           const res = await api.post('/mpesa/stkpush', {
             amount: mpesaPayment.amount,
             phone: mpesaPayment.phone,
-            order_id: 'temp'
+            order_id: `ORD-${Date.now()}`,
           });
           if (res.data.checkout_id) {
             mpesaPayment.checkout_request_id = res.data.checkout_id;
-            toast.success('M-Pesa STK push sent');
+            toast.success('M-Pesa STK push sent — confirm on your phone');
           } else {
             toast.error('M-Pesa initiation failed');
             setIsProcessing(false);
@@ -82,80 +133,76 @@ export default function PaymentModal({ total, onPay, onClose }) {
           return;
         }
       }
+
       onPay(payments);
-    } else {
-      const method = payments[0].method;
-      if (method === 'cash') {
-        const cash = parseFloat(cashAmount) || 0;
-        if (cash < total) {
-          toast.error(`Please pay at least Ksh ${total.toFixed(2)}`);
-          setIsProcessing(false);
-          return;
-        }
-        onPay([{ method: 'cash', amount: total, change: cash - total }]);
-      } else if (method === 'mpesa') {
-        const phoneRegex = /^(07|01|2547)\d{8}$/;
-        if (!mpesaPhone) {
-          toast.error('Phone number required');
-          setIsProcessing(false);
-          return;
-        }
-        if (!phoneRegex.test(mpesaPhone)) {
-          toast.error('Invalid phone number format (e.g., 0712345678)');
-          const orderId = `ORD-${Date.now()}`;
-        try {
-          const response = await api.post('/mpesa/stkpush', { amount: total, phone: mpesaPhone, order_id: orderId });
-          const checkoutId = response.data.checkout_id;
-          
-          toast.success('STK push sent. Waiting for PIN...');
-          
-          // Start polling
-          const interval = setInterval(async () => {
-            try {
-              const statusRes = await api.get(`/mpesa/status/${checkoutId}`);
-              if (statusRes.data.status === 'completed') {
-                clearInterval(interval);
-                toast.success('Payment Received!');
-                onPay([{ method: 'mpesa', amount: total, reference: statusRes.data.mpesa_code }]);
-              } else if (statusRes.data.status === 'failed') {
-                clearInterval(interval);
-                toast.error('Customer cancelled or payment failed.');
-                setIsProcessing(false);
-              }
-            } catch (pollErr) {
-              console.error('Polling error:', pollErr);
-            }
-          }, 3000);
-          
-          return; // Keep spinner active while polling
-        } catch (err) {
-          const msg = err.response?.data?.error || err.response?.data?.details?.errorMessage || 'M-Pesa request failed';
-          toast.error(msg);
-          setIsProcessing(false);
-          return;
-        }
-        try {
-          const res = await api.post('/mpesa/stkpush', {
-            amount: total,
-            phone: mpesaPhone,
-            order_id: 'temp'
-          });
-          if (res.data.checkout_id) {
-            onPay([{ method: 'mpesa', amount: total, checkout_request_id: res.data.checkout_id }]);
-            toast.success('M-Pesa STK push sent – confirm on your phone');
-          } else {
-            toast.error('M-Pesa initiation failed');
-          }
-        } catch (err) {
-          toast.error(err.response?.data?.error || 'M-Pesa request failed');
-        }
+      setIsProcessing(false);
+      return;
+    }
+
+    // ── SINGLE: CASH ─────────────────────────────────────────────────────────
+    const method = payments[0].method;
+
+    if (method === 'cash') {
+      const cash = parseFloat(cashAmount) || 0;
+      if (cash < total) {
+        toast.error(`Please pay at least Ksh ${total.toFixed(2)}`);
         setIsProcessing(false);
         return;
-      } else if (method === 'card') {
-        onPay([{ method: 'card', amount: total }]);
       }
+      onPay([{ method: 'cash', amount: total, change: cash - total }]);
+      setIsProcessing(false);
+      return;
     }
-    setIsProcessing(false);
+
+    // ── SINGLE: CARD ─────────────────────────────────────────────────────────
+    if (method === 'card') {
+      onPay([{ method: 'card', amount: total }]);
+      setIsProcessing(false);
+      return;
+    }
+
+    // ── SINGLE: M-PESA ───────────────────────────────────────────────────────
+    if (method === 'mpesa') {
+      if (!mpesaPhone) {
+        toast.error('Phone number required');
+        setIsProcessing(false);
+        return;
+      }
+      if (!phoneRegex.test(mpesaPhone)) {
+        toast.error('Invalid phone number format (e.g., 0712345678)');
+        setIsProcessing(false);
+        return;
+      }
+
+      // Step 1: Send STK push — do NOT call onPay yet
+      let checkoutId = null;
+      try {
+        const res = await api.post('/mpesa/stkpush', {
+          amount: total,
+          phone: mpesaPhone,
+          order_id: `ORD-${Date.now()}`,
+        });
+        checkoutId = res.data.checkout_id;
+        setStatusMessage('Waiting for PIN confirmation...');
+        toast.success('STK push sent — enter your M-Pesa PIN');
+      } catch (err) {
+        const msg = err.response?.data?.error
+          || err.response?.data?.details?.errorMessage
+          || 'M-Pesa request failed';
+        toast.error(msg);
+        setIsProcessing(false);
+        return;
+      }
+
+      // Step 2: Poll first — onPay fires inside pollForConfirmation only on success
+      // ❌ onPay is NOT called here
+      pollForConfirmation(checkoutId, {
+        method: 'mpesa',
+        amount: total,
+        checkout_request_id: checkoutId,
+      });
+      return; // spinner stays active while customer enters PIN
+    }
   };
 
   const changeAmount = !split ? (parseFloat(cashAmount) || 0) - total : 0;
@@ -165,15 +212,35 @@ export default function PaymentModal({ total, onPay, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+
+        {/* Header */}
         <div className="flex justify-between items-center p-6 border-b">
           <h3 className="text-xl font-bold">Payment</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+          <button
+            onClick={onClose}
+            disabled={isProcessing}
+            className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
+          >
+            <X size={20} />
+          </button>
         </div>
+
         <div className="p-6">
+
+          {/* Total */}
           <div className="mb-6 text-center">
             <p className="text-sm text-gray-500">Total Amount</p>
             <p className="text-3xl font-bold">Ksh {total.toFixed(2)}</p>
           </div>
+
+          {/* Polling status banner */}
+          {statusMessage && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 text-center animate-pulse">
+              ⏳ {statusMessage}
+            </div>
+          )}
+
+          {/* ── Single payment ── */}
           {!split ? (
             <>
               <div className="mb-3">
@@ -183,14 +250,20 @@ export default function PaymentModal({ total, onPay, onClose }) {
                     <button
                       key={method}
                       type="button"
+                      disabled={isProcessing}
                       onClick={() => setPayments([{ method, amount: 0 }])}
-                      className={`flex-1 py-2 rounded-lg border capitalize ${payments[0]?.method === method ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-700 border-gray-300'}`}
+                      className={`flex-1 py-2 rounded-lg border capitalize disabled:opacity-40 ${
+                        payments[0]?.method === method
+                          ? 'bg-amber-500 text-white border-amber-500'
+                          : 'bg-white text-gray-700 border-gray-300'
+                      }`}
                     >
                       {method}
                     </button>
                   ))}
                 </div>
               </div>
+
               {selectedMethod === 'cash' && (
                 <div className="mb-3">
                   <label className="block text-sm font-medium mb-1">Cash Amount</label>
@@ -204,13 +277,13 @@ export default function PaymentModal({ total, onPay, onClose }) {
                   />
                 </div>
               )}
+
               {selectedMethod === 'mpesa' && (
                 <div className="mb-3">
                   <label className="block text-sm font-medium mb-1">M-Pesa Phone Number</label>
                   <input
                     type="tel"
                     placeholder="0712345678"
-                    pattern="[0-9]{10,12}"
                     value={mpesaPhone}
                     onChange={(e) => setMpesaPhone(e.target.value)}
                     className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
@@ -218,31 +291,41 @@ export default function PaymentModal({ total, onPay, onClose }) {
                   <p className="text-xs text-gray-500 mt-1">Format: 0712345678 or 254712345678</p>
                 </div>
               )}
+
               {showChange && (
                 <div className="mt-3 p-3 bg-green-50 rounded-xl flex justify-between">
                   <span>Change to return</span>
                   <span className="font-bold text-green-700">Ksh {changeAmount.toFixed(2)}</span>
                 </div>
               )}
+
               {!showChange && remaining > 0 && selectedMethod === 'cash' && (
                 <div className="mt-3 p-3 bg-amber-50 rounded-xl flex justify-between">
                   <span>Remaining Balance</span>
                   <span className="font-bold">Ksh {remaining.toFixed(2)}</span>
-                  <label>M-Pesa Phone Number</label>
-                  <input type="tel" placeholder="0712345678 or 254712345678" value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="w-full p-3 border rounded-xl" />
                 </div>
               )}
-              <button onClick={() => setSplit(true)} className="mt-3 text-amber-600 text-sm flex items-center gap-1">
+
+              <button
+                onClick={() => setSplit(true)}
+                disabled={isProcessing}
+                className="mt-3 text-amber-600 text-sm flex items-center gap-1 disabled:opacity-30"
+              >
                 <Plus size={14} /> Split payment (add M-Pesa/Card)
               </button>
             </>
           ) : (
+            /* ── Split payment ── */
             <div className="space-y-3">
               {payments.map((p, idx) => (
                 <div key={idx} className="flex gap-2 items-center">
                   <div className="relative flex-1">
                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
-                      {p.method === 'cash' ? <DollarSign size={18} /> : p.method === 'card' ? <CreditCard size={18} /> : <Smartphone size={18} />}
+                      {p.method === 'cash'
+                        ? <DollarSign size={18} />
+                        : p.method === 'card'
+                        ? <CreditCard size={18} />
+                        : <Smartphone size={18} />}
                     </div>
                     <select
                       value={p.method}
@@ -259,24 +342,28 @@ export default function PaymentModal({ total, onPay, onClose }) {
                     placeholder="Amount"
                     value={p.amount}
                     onChange={e => updateSplitPayment(idx, 'amount', parseFloat(e.target.value))}
-                    className="w-32 px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-28 px-3 py-2 border border-gray-300 rounded-lg"
                   />
                   {p.method === 'mpesa' && (
                     <input
                       type="tel"
                       placeholder="Phone"
-                      pattern="[0-9]{10,12}"
                       value={p.phone || ''}
                       onChange={e => updateSplitPayment(idx, 'phone', e.target.value)}
                       className="w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
                   )}
                   {payments.length > 1 && (
-                    <button onClick={() => removeSplitPayment(idx)} className="text-amber-500"><X size={18} /></button>
+                    <button onClick={() => removeSplitPayment(idx)} className="text-amber-500">
+                      <X size={18} />
+                    </button>
                   )}
                 </div>
               ))}
-              <button onClick={addSplitPayment} className="text-amber-600 text-sm flex items-center gap-1 mt-2">
+              <button
+                onClick={addSplitPayment}
+                className="text-amber-600 text-sm flex items-center gap-1 mt-2"
+              >
                 <Plus size={14} /> Add M-Pesa or Card
               </button>
               <div className="mt-3 p-3 bg-amber-50 rounded-xl flex justify-between">
@@ -287,12 +374,27 @@ export default function PaymentModal({ total, onPay, onClose }) {
               </div>
             </div>
           )}
+
+          {/* Action buttons */}
           <div className="flex gap-3 mt-6">
-            <button onClick={onClose} className="flex-1 py-3 border rounded-xl" disabled={isProcessing}>Cancel</button>
-            <button onClick={processPayment} disabled={isProcessing} className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white py-3 rounded-xl font-semibold">
-              {isProcessing ? 'Processing...' : 'Confirm'}
+            <button
+              onClick={onClose}
+              disabled={isProcessing}
+              className="flex-1 py-3 border rounded-xl disabled:opacity-30"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={processPayment}
+              disabled={isProcessing}
+              className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white py-3 rounded-xl font-semibold disabled:opacity-70"
+            >
+              {isProcessing
+                ? (statusMessage ? 'Waiting for PIN...' : 'Processing...')
+                : 'Confirm'}
             </button>
           </div>
+
         </div>
       </div>
     </div>
