@@ -9,6 +9,8 @@ export default function ProductCard({ product, onAdd }) {
   const [unitType, setUnitType] = useState('piece');
   const [unitId, setUnitId] = useState(null);
 
+
+
   useEffect(() => {
     const fetchUnits = async () => {
       try {
