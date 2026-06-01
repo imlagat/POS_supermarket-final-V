@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
+import ReceiptModal from '../components/POS/ReceiptModal';
 import { Receipt, Search, Eye, Download, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -12,10 +13,28 @@ export default function Transactions() {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [returns, setReturns] = useState([]);
+  const [systemSettings, setSystemSettings] = useState({});
 
   useEffect(() => {
     fetchTransactions();
+    fetchReturns();
+    fetchSettings();
   }, [period, customStart, customEnd]);
+
+  const fetchReturns = async () => {
+    try {
+      const res = await api.get('/returns');
+      setReturns(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchSettings = async () => {
+    try {
+      const res = await api.get('/settings');
+      setSystemSettings(res.data);
+    } catch (err) { console.error(err); }
+  };
 
   const fetchTransactions = async () => {
     try {
@@ -37,9 +56,8 @@ export default function Transactions() {
     try {
       let url = '/transactions/export';
       const params = new URLSearchParams();
-      if (period !== 'all') {
-        params.append('period', period);
-      } else if (customStart && customEnd) {
+      if (period !== 'all') params.append('period', period);
+      else if (customStart && customEnd) {
         params.append('start_date', customStart);
         params.append('end_date', customEnd);
       }
@@ -60,6 +78,11 @@ export default function Transactions() {
     } finally {
       setExporting(false);
     }
+  };
+
+  // Check if an order has any returns
+  const hasReturn = (orderId) => {
+    return returns.some(r => r.order_id === orderId);
   };
 
   const filtered = transactions.filter(t =>
@@ -148,6 +171,7 @@ export default function Transactions() {
                 <th className="text-left p-4">Cashier</th>
                 <th className="text-left p-4">Total</th>
                 <th className="text-left p-4">Payment</th>
+                <th className="text-left p-4">Status</th>
                 <th className="text-left p-4">Actions</th>
               </tr>
             </thead>
@@ -163,6 +187,17 @@ export default function Transactions() {
                     {t.payments.map(p => `${p.method.toUpperCase()} (Ksh ${p.amount})`).join(', ')}
                   </td>
                   <td className="p-4">
+                    {hasReturn(t.id) ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span> Returned
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                        <span className="w-2 h-2 rounded-full bg-green-500"></span> Completed
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-4">
                     <button onClick={() => viewReceipt(t)} className="text-blue-600 hover:text-blue-800">
                       <Eye size={18} /> Receipt
                     </button>
@@ -170,58 +205,24 @@ export default function Transactions() {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan="7" className="text-center p-8 text-gray-400">No transactions found</td></tr>
+                <tr><td colSpan="8" className="text-center p-8 text-gray-400">No transactions found</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Receipt Modal */}
+      {/* Reuse the same ReceiptModal component */}
       {showReceipt && selectedTransaction && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-auto">
-            <div className="p-6 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold">Receipt</h2>
-              <button onClick={() => setShowReceipt(false)} className="text-gray-500">✖</button>
-            </div>
-            <div className="p-6">
-              <div className="text-center border-b pb-4 mb-4">
-                <h1 className="text-2xl font-bold text-amber-600">SUPER POS</h1>
-                <p className="text-sm text-gray-500">P.O Box 20100 Nakuru, Kenyatta Avenue</p>
-                <p className="text-xs font-mono mt-2">{selectedTransaction.order_number}</p>
-                <p className="text-xs">{new Date(selectedTransaction.created_at).toLocaleString()}</p>
-                <p className="text-xs">Cashier: {selectedTransaction.cashier?.name}</p>
-              </div>
-              <div className="mb-4">
-                <p><strong>Customer:</strong> {selectedTransaction.customer?.name || 'Walk-in'}</p>
-                {selectedTransaction.customer?.phone && <p><strong>Phone:</strong> {selectedTransaction.customer.phone}</p>}
-              </div>
-              <table className="w-full text-sm mb-4">
-                <thead className="border-b"><tr><th className="text-left">Item</th><th className="text-right">Qty</th><th className="text-right">Price</th><th className="text-right">Total</th></tr></thead>
-                <tbody>
-                  {selectedTransaction.items.map((item, idx) => (
-                    <tr key={idx} className="border-b">
-                      <td className="py-1">{item.product?.name}</td>
-                      <td className="text-right">{item.quantity}</td>
-                      <td className="text-right">Ksh {item.unit_price}</td>
-                      <td className="text-right">Ksh {item.total}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="border-t pt-2">
-                  <tr><td colSpan="3" className="text-right font-bold">Total:</td><td className="text-right">Ksh {selectedTransaction.total_amount}</td></tr>
-                  {selectedTransaction.payments.map((p, idx) => <tr key={idx}><td colSpan="3" className="text-right text-sm">Paid via {p.method}:</td><td className="text-right">Ksh {p.amount}</td></tr>)}
-                </tfoot>
-              </table>
-              <div className="text-center text-xs text-gray-500 border-t pt-4">Thank you for shopping!<br />Goods once sold are non-refundable.</div>
-            </div>
-            <div className="p-6 border-t flex gap-3">
-              <button onClick={() => setShowReceipt(false)} className="flex-1 py-2 border rounded-xl">Close</button>
-              <button onClick={() => window.print()} className="flex-1 bg-amber-500 text-white py-2 rounded-xl">Print</button>
-            </div>
-          </div>
-        </div>
+        <ReceiptModal
+          order={selectedTransaction}
+          changeAmount={0}
+          discounts={[]}
+          pointsDiscount={0}
+          customer={selectedTransaction.customer}
+          settings={systemSettings}
+          onClose={() => setShowReceipt(false)}
+        />
       )}
     </div>
   );

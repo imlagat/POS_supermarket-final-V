@@ -4,6 +4,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Customer;
+use App\Models\ReturnOrder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -12,46 +13,61 @@ class ReportController extends Controller
     public function sales(Request $request)
     {
         $totalSales = Order::where('status', 'completed')->sum('total_amount');
+        $totalRefunds = ReturnOrder::sum('refund_amount');
+        $netSales = $totalSales - $totalRefunds;
         $ordersCount = Order::where('status', 'completed')->count();
         $customersCount = Customer::count();
         $productsCount = Product::count();
-        
+
         $weeklySales = Order::where('status', 'completed')
             ->where('created_at', '>=', now()->subDays(7))
             ->selectRaw('DATE(created_at) as date, SUM(total_amount) as total')
             ->groupBy('date')
-            ->get();
-            
+            ->get()
+            ->map(function ($item) {
+                // Subtract refunds that happened on the same date
+                $refundsOnDate = ReturnOrder::whereDate('created_at', $item->date)->sum('refund_amount');
+                $item->total = $item->total - $refundsOnDate;
+                return $item;
+            });
+
         return response()->json([
-            'total_sales' => (float) $totalSales,
+            'total_sales' => (float) $netSales,
             'orders' => $ordersCount,
             'customers' => $customersCount,
             'products' => $productsCount,
             'weekly_sales' => $weeklySales
         ]);
     }
-    
+
     public function dailySales()
     {
         $sales = Order::where('status', 'completed')->whereDate('created_at', today())->sum('total_amount');
+        $refunds = ReturnOrder::whereDate('created_at', today())->sum('refund_amount');
         $orders = Order::where('status', 'completed')->whereDate('created_at', today())->count();
-        return response()->json(['sales' => (float) $sales, 'orders' => $orders]);
+        return response()->json(['sales' => (float) ($sales - $refunds), 'orders' => $orders]);
     }
-    
+
     public function weeklySales()
     {
-        $sales = Order::where('status', 'completed')->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()])->sum('total_amount');
-        $orders = Order::where('status', 'completed')->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()])->count();
-        return response()->json(['sales' => (float) $sales, 'orders' => $orders]);
+        $start = now()->startOfWeek();
+        $end = now()->endOfWeek();
+        $sales = Order::where('status', 'completed')->whereBetween('created_at', [$start, $end])->sum('total_amount');
+        $refunds = ReturnOrder::whereBetween('created_at', [$start, $end])->sum('refund_amount');
+        $orders = Order::where('status', 'completed')->whereBetween('created_at', [$start, $end])->count();
+        return response()->json(['sales' => (float) ($sales - $refunds), 'orders' => $orders]);
     }
-    
+
     public function monthlySales()
     {
-        $sales = Order::where('status', 'completed')->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->sum('total_amount');
-        $orders = Order::where('status', 'completed')->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->count();
-        return response()->json(['sales' => (float) $sales, 'orders' => $orders]);
+        $start = now()->startOfMonth();
+        $end = now()->endOfMonth();
+        $sales = Order::where('status', 'completed')->whereBetween('created_at', [$start, $end])->sum('total_amount');
+        $refunds = ReturnOrder::whereBetween('created_at', [$start, $end])->sum('refund_amount');
+        $orders = Order::where('status', 'completed')->whereBetween('created_at', [$start, $end])->count();
+        return response()->json(['sales' => (float) ($sales - $refunds), 'orders' => $orders]);
     }
-    
+
     public function topProducts(Request $request)
     {
         $limit = $request->get('limit', 5);
@@ -71,7 +87,7 @@ class ReportController extends Controller
             });
         return response()->json($top);
     }
-    
+
     public function salesByCategory()
     {
         $categories = OrderItem::select('products.category', DB::raw('SUM(order_items.total) as revenue'))
@@ -86,7 +102,7 @@ class ReportController extends Controller
             });
         return response()->json($categories);
     }
-    
+
     public function lowStock()
     {
         $lowStock = Product::whereColumn('stock_quantity', '<=', 'min_stock_threshold')->get();

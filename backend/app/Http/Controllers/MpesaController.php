@@ -70,22 +70,6 @@ class MpesaController extends Controller
     }
 
     return response()->json(['ResultCode' => 0, 'ResultDesc' => 'Success']);
-<<<<<<< Updated upstream
-}
-
-public function checkStatus(Request $request, string $checkoutId)
-{
-    $status = Cache::get('mpesa_' . $checkoutId, 'pending');
-    $ref = Cache::get('mpesa_ref_' . $checkoutId, null);
-
-    return response()->json([
-        'status'     => $status,
-        'mpesa_code' => $ref,
-    ]);
-}
-
-=======
->>>>>>> Stashed changes
 }
 
 public function checkStatus(Request $request, string $checkoutId)

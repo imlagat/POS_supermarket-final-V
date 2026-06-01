@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Batch;
 use App\Models\LoyaltyTransaction;
 use App\Services\CartObject;
+use App\Helpers\SettingsHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Pipeline;
 use Illuminate\Support\Str;
@@ -59,6 +60,14 @@ class OrderController extends Controller
                 ])
             ]);
 
+            \App\Models\AuditLog::create([
+                'user_id' => auth()->id(),
+                'action' => 'sale',
+                'model_type' => 'Order',
+                'model_id' => $order->id,
+                'ip_address' => request()->ip(),
+            ]);
+
             foreach ($request->items as $item) {
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -68,69 +77,56 @@ class OrderController extends Controller
                     'total' => $item['price'] * $item['quantity']
                 ]);
 
-                // Deduct stock
                 $product = Product::find($item['product_id']);
-                if ($product) {
-                    $product->decrement('stock_quantity', $item['quantity']);
+                if (!$product) continue;
+
+                if (isset($item['unit_id']) && $item['unit_id']) {
+                    $unit = \App\Models\AlternativeUnit::find($item['unit_id']);
+                    if ($unit) {
+                        $unit->decrement('stock', $item['quantity']);
+                        $product->decrement('stock_quantity', $unit->quantity_in_base_unit * $item['quantity']);
+                    }
+                } else {
                     $remaining = $item['quantity'];
-                    $batches = Batch::where('product_id', $product->id)
-                        ->where('quantity', '>', 0)
-                        ->orderBy('expiry_date', 'asc')
-                        ->get();
-                    foreach ($batches as $batch) {
-                        if ($remaining <= 0) break;
-                        $deduct = min($batch->quantity, $remaining);
-                        $batch->decrement('quantity', $deduct);
-                        $remaining -= $deduct;
+                    $deductFromBase = min($product->stock_quantity, $remaining);
+                    $product->decrement('stock_quantity', $deductFromBase);
+                    $remaining -= $deductFromBase;
+
+                    if ($remaining > 0) {
+                        $alternatives = $product->alternativeUnits()->where('stock', '>', 0)->orderBy('price')->get();
+                        foreach ($alternatives as $unit) {
+                            if ($remaining <= 0) break;
+                            $piecesPerUnit = $unit->quantity_in_base_unit;
+                            $unitsNeeded = ceil($remaining / $piecesPerUnit);
+                            $unitsToConvert = min($unit->stock, $unitsNeeded);
+                            $piecesObtained = $unitsToConvert * $piecesPerUnit;
+                            $unit->decrement('stock', $unitsToConvert);
+                            $product->increment('stock_quantity', $piecesObtained);
+                            $deductNow = min($remaining, $piecesObtained);
+                            $product->decrement('stock_quantity', $deductNow);
+                            $remaining -= $deductNow;
+                        }
                     }
                 }
             }
 
             foreach ($request->payments as $payment) {
-    $status = 'completed';
-    $checkoutRequestId = null;
-
-    // M-Pesa starts as pending — callback will mark it completed
-    if ($payment['method'] === 'mpesa') {
-        $status = 'pending';
-        $checkoutRequestId = $payment['checkout_request_id'] ?? null;
-    }
-
-    Payment::create([
-        'order_id'            => $order->id,
-        'amount'              => $payment['amount'],
-        'method'              => $payment['method'],
-        'status'              => $status,
-        'checkout_request_id' => $checkoutRequestId,
-    ]);
-}
+                Payment::create([
+                    'order_id' => $order->id,
+                    'amount' => $payment['amount'],
+                    'method' => $payment['method'],
+                    'status' => 'completed'
+                ]);
+            }
 
             if ($request->customer_id) {
                 $customer = Customer::find($request->customer_id);
                 if ($customer) {
-                    // 1. Deduct redeemed points
-                    $pointsRedeemed = (int) floor($request->points_discount ?? 0);
-                    if ($pointsRedeemed > 0) {
-                        if ($customer->points_balance >= $pointsRedeemed) {
-                            $customer->points_balance -= $pointsRedeemed;
-                            $customer->save(); // triggers observer for tier update
-                            LoyaltyTransaction::create([
-                                'customer_id' => $customer->id,
-                                'points' => -$pointsRedeemed,
-                                'type' => 'redeem',
-                                'order_id' => $order->id,
-                                'description' => 'Redeemed points for discount'
-                            ]);
-                        } else {
-                            Log::warning('Insufficient points for redemption', ['customer_id' => $customer->id, 'points' => $pointsRedeemed]);
-                        }
-                    }
-
-                    // 2. Earn points on the actual paid amount (after discounts)
-                    $pointsEarned = (int) floor($order->total_amount / 10);
+                    $pointsEarningRate = (int) SettingsHelper::get('points_earning_rate', 10);
+                    $pointsEarned = (int) floor($order->total_amount / $pointsEarningRate);
                     if ($pointsEarned > 0) {
                         $customer->points_balance += $pointsEarned;
-                        $customer->save(); // triggers observer for tier update
+                        $customer->save();
                         LoyaltyTransaction::create([
                             'customer_id' => $customer->id,
                             'points' => $pointsEarned,

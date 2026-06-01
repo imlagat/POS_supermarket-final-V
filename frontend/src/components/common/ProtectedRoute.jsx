@@ -3,20 +3,20 @@ import { useAuthStore } from '../../stores/authStore';
 import { useEffect, useState } from 'react';
 
 export default function ProtectedRoute() {
-    const { token, isLoading, loadUser, user } = useAuthStore();
-    const [isChecked, setIsChecked] = useState(false);
+    const { token, user, loadUser } = useAuthStore();
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const check = async () => {
-            await loadUser();
-            setIsChecked(true);
+        const init = async () => {
+            if (token && !user) {
+                await loadUser();
+            }
+            setIsLoading(false);
         };
-        check();
+        init();
     }, []);
 
-    if (isLoading || !isChecked) {
-        return <div className="flex justify-center items-center h-screen">Loading...</div>;
-    }
+    if (isLoading) return <div className="flex justify-center items-center h-screen">Loading...</div>;
 
     if (!token || !user) {
         return <Navigate to="/login" replace />;

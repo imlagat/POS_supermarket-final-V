@@ -14,12 +14,11 @@ Route::post('/login', [AuthController::class, 'login']);
 // M-Pesa callback — must be public (no auth) so Safaricom can reach it
 Route::post('/mpesa/callback', [MpesaController::class, 'callback']);
 
-// M-Pesa callback — must be public (no auth) so Safaricom can reach it
-Route::post('/mpesa/callback', [MpesaController::class, 'callback']);
-
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
@@ -47,36 +46,106 @@ Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Control
 });
 
 Route::middleware('auth:sanctum')->get('/mpesa/status/{checkoutId}', [MpesaController::class, 'checkStatus']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 
 Route::middleware('auth:sanctum')->get('/transactions', [App\Http\Controllers\TransactionController::class, 'index']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/transactions/{id}', [App\Http\Controllers\TransactionController::class, 'show']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 
 
 Route::middleware('auth:sanctum')->get('/reports/daily-sales', [App\Http\Controllers\ReportController::class, 'dailySales']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/reports/weekly-sales', [App\Http\Controllers\ReportController::class, 'weeklySales']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/reports/monthly-sales', [App\Http\Controllers\ReportController::class, 'monthlySales']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/reports/top-products', [App\Http\Controllers\ReportController::class, 'topProducts']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/reports/sales-by-category', [App\Http\Controllers\ReportController::class, 'salesByCategory']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/reports/daily-sales', [App\Http\Controllers\ReportController::class, 'dailySales']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/reports/weekly-sales', [App\Http\Controllers\ReportController::class, 'weeklySales']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/reports/monthly-sales', [App\Http\Controllers\ReportController::class, 'monthlySales']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/reports/top-products', [App\Http\Controllers\ReportController::class, 'topProducts']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/reports/sales-by-category', [App\Http\Controllers\ReportController::class, 'salesByCategory']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/settings', [App\Http\Controllers\SettingsController::class, 'index']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->post('/settings', [App\Http\Controllers\SettingsController::class, 'update'])->middleware('role:admin');
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware('auth:sanctum')->get('/transactions/export', [App\Http\Controllers\TransactionController::class, 'export']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
 Route::middleware("auth:sanctum")->get("/transactions/export", [App\Http\Controllers\TransactionController::class, "export"]);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
+Route::middleware('auth:sanctum')->get('/customers/export', [App\Http\Controllers\CustomerController::class, 'export']);
+    Route::get("/customers/export", [App\Http\Controllers\CustomerController::class, "export"]);
+Route::middleware('auth:sanctum')->get('/profile', [App\Http\Controllers\UserController::class, 'profile']);
+Route::middleware('auth:sanctum')->put('/profile', [App\Http\Controllers\UserController::class, 'updateProfile']);
+Route::middleware('auth:sanctum')->get('/products/{product}/units', [App\Http\Controllers\AlternativeUnitController::class, 'index']);
+Route::middleware('auth:sanctum')->post('/returns', [App\Http\Controllers\ReturnController::class, 'store']);
+Route::middleware('auth:sanctum')->get('/returns', [App\Http\Controllers\ReturnController::class, 'index']);
+Route::middleware('auth:sanctum')->get('/products/{product}/units', [App\Http\Controllers\AlternativeUnitController::class, 'index']);
+Route::middleware('auth:sanctum')->get('/audit-logs', [App\Http\Controllers\AuditLogController::class, 'index'])->middleware('role:admin');
+Route::middleware('auth:sanctum')->get('/audit-logs', [App\Http\Controllers\AuditLogController::class, 'index'])->middleware('role:admin');
+Route::middleware('auth:sanctum')->get('/discount-rules/active', [App\Http\Controllers\DiscountRuleController::class, 'active']);
+Route::middleware('auth:sanctum')->get('/promotions/active', [App\Http\Controllers\DiscountRuleController::class, 'active']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::apiResource('suppliers', App\Http\Controllers\SupplierController::class);
+    Route::apiResource('purchase-orders', App\Http\Controllers\PurchaseOrderController::class);
+    Route::post('/purchase-orders/{purchaseOrder}/receive', [App\Http\Controllers\PurchaseOrderController::class, 'receive']);
+});
+Route::middleware('auth:sanctum')->post('/returns/search-order', [App\Http\Controllers\ReturnController::class, 'getOrder']);
+Route::middleware('auth:sanctum')->post('/returns', [App\Http\Controllers\ReturnController::class, 'store']);
+Route::middleware('auth:sanctum')->get('/returns', [App\Http\Controllers\ReturnController::class, 'index']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::apiResource('returns', App\Http\Controllers\ReturnController::class)->only(['index', 'store']);
+});
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/returns', [App\Http\Controllers\ReturnController::class, 'index']);
+    Route::post('/returns', [App\Http\Controllers\ReturnController::class, 'store']);
+});
+Route::middleware('auth:sanctum')->group(function () {
+    Route::apiResource('returns', App\Http\Controllers\ReturnController::class)->only(['index', 'store']);
+});
+Route::middleware('auth:sanctum')->get('/purchase-orders/overdue', [App\Http\Controllers\PurchaseOrderController::class, 'overdue']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/returned-items', [App\Http\Controllers\ReturnedItemController::class, 'index'])->middleware('role:admin,manager');
+    Route::post('/returned-items/{returnedItem}/open-box', [App\Http\Controllers\ReturnedItemController::class, 'markOpenBox'])->middleware('role:admin,manager');
+    Route::post('/returned-items/{returnedItem}/dispose', [App\Http\Controllers\ReturnedItemController::class, 'dispose'])->middleware('role:admin,manager');
+});
+Route::middleware('auth:sanctum')->post('/products/import', [App\Http\Controllers\ProductImportController::class, 'import'])->middleware('role:admin,manager');
+Route::middleware('auth:sanctum')->get('/open-box-items', [App\Http\Controllers\OpenBoxController::class, 'index']);
+Route::middleware('auth:sanctum')->get('/open-box-items', [App\Http\Controllers\OpenBoxController::class, 'index']);

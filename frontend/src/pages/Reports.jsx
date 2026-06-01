@@ -49,6 +49,8 @@ export default function Reports() {
   const currentData = activeTab === 'daily' ? daily : activeTab === 'weekly' ? weekly : monthly;
   const periodLabel = activeTab === 'daily' ? 'Today' : activeTab === 'weekly' ? 'This Week' : 'This Month';
 
+  if (loading) return <div className="flex justify-center items-center h-64">Loading reports...</div>;
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
@@ -110,27 +112,15 @@ export default function Reports() {
           )}
         </div>
 
-        {/* Sales by Category (Pie Chart with Legend) */}
+        {/* Sales by Category (Pie Chart) */}
         <div className="bg-white rounded-2xl shadow-lg p-6">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Package className="text-amber-500" /> Sales by Category</h2>
-          {salesByCategory.length === 0 ? (
-            <p className="text-gray-500">No data yet</p>
-          ) : (
+          {salesByCategory.length === 0 ? <p className="text-gray-500">No data yet</p> : (
             <>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
-                  <Pie
-                    data={salesByCategory}
-                    dataKey="revenue"
-                    nameKey="category"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {salesByCategory.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
+                  <Pie data={salesByCategory} dataKey="revenue" nameKey="category" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}>
+                    {salesByCategory.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                   </Pie>
                   <Tooltip formatter={(value) => `Ksh ${value.toLocaleString()}`} />
                   <Legend />
@@ -153,7 +143,26 @@ export default function Reports() {
       <div className="bg-white rounded-2xl shadow-lg p-6">
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><AlertCircle className="text-amber-500" /> Low Stock Products</h2>
         {lowStock.length === 0 ? <p className="text-gray-500">All products have sufficient stock ✅</p> : (
-          <table className="w-full"><thead><tr><th className="text-left p-2">Product</th><th className="text-left p-2">SKU</th><th className="text-left p-2">Current Stock</th><th className="text-left p-2">Min Threshold</th></tr></thead><tbody>{lowStock.map(p => (<tr key={p.id} className="border-b"><td className="p-2">{p.name}</td><td className="p-2">{p.sku}</td><td className="text-red-600">{p.stock_quantity}</td><td className="p-2">{p.min_stock_threshold}</td></tr>))}</tbody></table>
+          <table className="w-full">
+            <thead className="border-b">
+              <tr>
+                <th className="text-left p-2">Product</th>
+                <th className="text-left p-2">SKU</th>
+                <th className="text-left p-2">Current Stock</th>
+                <th className="text-left p-2">Min Threshold</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lowStock.map(p => (
+                <tr key={p.id} className="border-b">
+                  <td className="p-2">{p.name}</td>
+                  <td className="p-2">{p.sku}</td>
+                  <td className="text-red-600">{p.stock_quantity}</td>
+                  <td className="p-2">{p.min_stock_threshold}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

@@ -6,7 +6,14 @@ use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
 {
-    public function index() { return Customer::all(); }
+    public function index(Request $request)
+    {
+        $query = Customer::query();
+        if ($request->has('tier') && in_array($request->tier, ['bronze', 'silver', 'gold'])) {
+            $query->where('tier', $request->tier);
+        }
+        return $query->get();
+    }
 
     public function store(Request $request)
     {
@@ -22,12 +29,14 @@ class CustomerController extends Controller
             'points_balance' => 'nullable|integer|min:0',
             'tier' => 'nullable|in:bronze,silver,gold'
         ]);
-
         $customer = Customer::create($validated);
         return response()->json($customer, 201);
     }
 
-    public function show(Customer $customer) { return $customer; }
+    public function show(Customer $customer)
+    {
+        return $customer;
+    }
 
     public function update(Request $request, Customer $customer)
     {
@@ -47,7 +56,11 @@ class CustomerController extends Controller
         return $customer;
     }
 
-    public function destroy(Customer $customer) { $customer->delete(); return response()->noContent(); }
+    public function destroy(Customer $customer)
+    {
+        $customer->delete();
+        return response()->noContent();
+    }
 
     public function redeemPoints(Request $request, Customer $customer)
     {
@@ -57,5 +70,29 @@ class CustomerController extends Controller
             return response()->json(['message' => 'Points redeemed', 'new_balance' => $customer->points_balance]);
         }
         return response()->json(['message' => 'Insufficient points'], 400);
+    }
+
+    public function export(Request $request)
+    {
+        $query = Customer::query();
+        if ($request->has('tier') && in_array($request->tier, ['bronze', 'silver', 'gold'])) {
+            $query->where('tier', $request->tier);
+        }
+        $customers = $query->get();
+
+        $filename = 'customers_' . date('Y-m-d_His') . '.csv';
+        $handle = fopen('php://temp', 'w+');
+        fputcsv($handle, ['Name', 'Phone', 'Email', 'Tier', 'Points Balance']);
+        foreach ($customers as $c) {
+            fputcsv($handle, [$c->name, $c->phone, $c->email, $c->tier, $c->points_balance]);
+        }
+        rewind($handle);
+        $content = stream_get_contents($handle);
+        fclose($handle);
+
+        return response($content, 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"$filename\"",
+        ]);
     }
 }

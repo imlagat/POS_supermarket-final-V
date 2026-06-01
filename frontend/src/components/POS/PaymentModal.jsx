@@ -50,94 +50,122 @@ export default function PaymentModal({ total, onPay, onClose }) {
   };
 
   // ── Polling: onPay is ONLY called from here, after PIN confirmed ──────────
-  const pollForConfirmation = (checkoutId, paymentPayload) => {
-    let attempts = 0;
-    const maxAttempts = 20; // 20 × 3s = 60 seconds
+ const pollForConfirmation = (checkoutId, paymentPayload) => {
+  let attempts = 0;
+  const maxAttempts = 20;
 
-    const interval = setInterval(async () => {
-      attempts++;
-      try {
-        const res = await api.get(`/mpesa/status/${checkoutId}`);
-        const { status, mpesa_code } = res.data;
+  const interval = setInterval(async () => {
+    attempts++;
+    try {
+      const res = await api.get(`/mpesa/status/${checkoutId}`);
+      const { status, mpesa_code } = res.data;
 
-        if (status === 'completed') {
-          clearInterval(interval);
-          toast.success(`Payment confirmed! Code: ${mpesa_code}`);
-          // ✅ Receipt only fires here — after PIN is confirmed
-          onPay([{ ...paymentPayload, reference: mpesa_code, status: 'completed' }]);
-          setIsProcessing(false);
-          setStatusMessage('');
-        } else if (status === 'failed') {
-          clearInterval(interval);
-          toast.error('M-Pesa payment failed or was cancelled');
-          setIsProcessing(false);
-          setStatusMessage('');
-        } else if (attempts >= maxAttempts) {
-          clearInterval(interval);
-          toast.error('Payment timed out — please try again');
-          setIsProcessing(false);
-          setStatusMessage('');
-        }
-        // status === 'pending' → keep polling silently
-      } catch {
+      if (status === 'completed') {
         clearInterval(interval);
-        toast.error('Could not verify payment status');
+        toast.success(`Payment confirmed! Code: ${mpesa_code}`);
+
+        // If this came from a split payment, pass the full payments array
+        // with the M-Pesa slice updated to include the confirmed reference
+        if (paymentPayload.allPayments) {
+          const updatedPayments = paymentPayload.allPayments.map(p =>
+            p.method === 'mpesa'
+              ? { ...p, reference: mpesa_code, status: 'completed' }
+              : p
+          );
+          onPay(updatedPayments);
+        } else {
+          onPay([{ ...paymentPayload, reference: mpesa_code, status: 'completed' }]);
+        }
+
+        setIsProcessing(false);
+        setStatusMessage('');
+      } else if (status === 'failed') {
+        clearInterval(interval);
+        toast.error('M-Pesa payment failed or was cancelled');
+        setIsProcessing(false);
+        setStatusMessage('');
+      } else if (attempts >= maxAttempts) {
+        clearInterval(interval);
+        toast.error('Payment timed out — please try again');
         setIsProcessing(false);
         setStatusMessage('');
       }
-    }, 3000);
-  };
+    } catch {
+      clearInterval(interval);
+      toast.error('Could not verify payment status');
+      setIsProcessing(false);
+      setStatusMessage('');
+    }
+  }, 3000);
+};
 
   // ── Main handler ──────────────────────────────────────────────────────────
   const processPayment = async () => {
     setIsProcessing(true);
 
     // ── SPLIT PAYMENT ────────────────────────────────────────────────────────
-    if (split) {
-      const totalPaid = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-      if (Math.abs(totalPaid - total) > 0.01) {
-        toast.error(`Please pay remaining Ksh ${remaining.toFixed(2)}`);
-        setIsProcessing(false);
-        return;
-      }
+if (split) {
+  const totalPaid = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  if (Math.abs(totalPaid - total) > 0.01) {
+    toast.error(`Please pay remaining Ksh ${remaining.toFixed(2)}`);
+    setIsProcessing(false);
+    return;
+  }
 
-      const mpesaPayment = payments.find(p => p.method === 'mpesa');
-      if (mpesaPayment && mpesaPayment.amount > 0) {
-        if (!mpesaPayment.phone) {
-          toast.error('Phone number required for M-Pesa');
-          setIsProcessing(false);
-          return;
-        }
-        if (!phoneRegex.test(mpesaPayment.phone)) {
-          toast.error('Invalid phone number format (e.g., 0712345678)');
-          setIsProcessing(false);
-          return;
-        }
-        try {
-          const res = await api.post('/mpesa/stkpush', {
-            amount: mpesaPayment.amount,
-            phone: mpesaPayment.phone,
-            order_id: `ORD-${Date.now()}`,
-          });
-          if (res.data.checkout_id) {
-            mpesaPayment.checkout_request_id = res.data.checkout_id;
-            toast.success('M-Pesa STK push sent — confirm on your phone');
-          } else {
-            toast.error('M-Pesa initiation failed');
-            setIsProcessing(false);
-            return;
-          }
-        } catch (err) {
-          toast.error(err.response?.data?.error || 'M-Pesa request failed');
-          setIsProcessing(false);
-          return;
-        }
-      }
+  const mpesaPayment = payments.find(p => p.method === 'mpesa');
 
-      onPay(payments);
+  if (mpesaPayment && mpesaPayment.amount > 0) {
+    if (!mpesaPayment.phone) {
+      toast.error('Phone number required for M-Pesa');
       setIsProcessing(false);
       return;
     }
+    if (!phoneRegex.test(mpesaPayment.phone)) {
+      toast.error('Invalid phone number format (e.g., 0712345678)');
+      setIsProcessing(false);
+      return;
+    }
+
+    // Step 1: Send STK push
+    let checkoutId = null;
+    try {
+      const res = await api.post('/mpesa/stkpush', {
+        amount: mpesaPayment.amount,
+        phone: mpesaPayment.phone,
+        order_id: `ORD-${Date.now()}`,
+      });
+      checkoutId = res.data.checkout_id;
+      if (!checkoutId) {
+        toast.error('M-Pesa initiation failed');
+        setIsProcessing(false);
+        return;
+      }
+      mpesaPayment.checkout_request_id = checkoutId;
+      setStatusMessage('Waiting for M-Pesa PIN confirmation...');
+      toast.success('M-Pesa STK push sent — enter PIN on your phone');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'M-Pesa request failed');
+      setIsProcessing(false);
+      return;
+    }
+
+    // Step 2: Poll first — onPay only fires after PIN confirmed
+    // ❌ onPay(payments) is NOT called here
+    pollForConfirmation(checkoutId, {
+      method: 'mpesa',
+      amount: mpesaPayment.amount,
+      checkout_request_id: checkoutId,
+      // carry the full payments array so the parent gets all payment slices
+      allPayments: payments,
+    });
+    return; // spinner stays active
+  }
+
+  // No M-Pesa in split (cash + card only) — safe to complete immediately
+  onPay(payments);
+  setIsProcessing(false);
+  return;
+}
 
     // ── SINGLE: CASH ─────────────────────────────────────────────────────────
     const method = payments[0].method;
