@@ -1,8 +1,8 @@
 <?php
 namespace App\Http\Controllers;
 use App\Models\ReturnedItem;
-use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ReturnedItemController extends Controller
 {
@@ -34,5 +34,15 @@ class ReturnedItemController extends Controller
             'disposal_reason' => $request->disposal_reason,
         ]);
         return response()->json(['message' => 'Item disposed', 'item' => $returnedItem]);
+    }
+
+    public function uploadImage(Request $request, ReturnedItem $returnedItem)
+    {
+        $request->validate([
+            'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
+        $path = $request->file('image')->store('returns', 'public');
+        $returnedItem->update(['image_path' => $path]);
+        return response()->json(['message' => 'Image uploaded', 'path' => Storage::url($path)]);
     }
 }

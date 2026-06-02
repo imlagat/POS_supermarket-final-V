@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { RefreshCw, Search, Package, Tag, Trash2, X, Settings } from 'lucide-react';
+import { RefreshCw, Search, Tag, Trash2, X, Settings } from 'lucide-react';
 
 export default function Returns() {
   const [activeTab, setActiveTab] = useState('process');
@@ -16,7 +16,11 @@ export default function Returns() {
   const [refundMethod, setRefundMethod] = useState('cash');
   const [processing, setProcessing] = useState(false);
   const [restockingFee, setRestockingFee] = useState(0);
-  const NON_REFUNDABLE_FEE = 100; // per product type
+  const [incurredExpense, setIncurredExpense] = useState(0);
+  const NON_REFUNDABLE_FEE = 100;
+  const VAT_RATE = 0.16;
+  const [evidenceImage, setEvidenceImage] = useState(null);
+  const [evidencePreview, setEvidencePreview] = useState(null);
 
   // For returned items actions (Goods Engine)
   const [actionItem, setActionItem] = useState(null);
@@ -46,7 +50,7 @@ export default function Returns() {
     }
   };
 
-  // ----- Order Search for Process Return (with 3‑day limit and already‑returned check) -----
+  // ----- Order Search for Process Return -----
   const searchOrderByNumber = async () => {
     if (!searchOrder) return;
     try {
@@ -56,7 +60,6 @@ export default function Returns() {
       ]);
       const order = ordersRes.data.find(o => o.order_number === searchOrder);
       if (order) {
-        // 3‑day return window check
         const orderDate = new Date(order.created_at);
         const now = new Date();
         const diffDays = (now - orderDate) / (1000 * 60 * 60 * 24);
@@ -65,10 +68,7 @@ export default function Returns() {
           setFoundOrder(null);
           return;
         }
-
-        // Get all returns for this order
         const orderReturns = returnsRes.data.filter(r => r.order_id === order.id);
-        // Sum already returned quantities per product
         const returnedQuantities = {};
         orderReturns.forEach(ret => {
           const items = Array.isArray(ret.items) ? ret.items : JSON.parse(ret.items);
@@ -76,7 +76,6 @@ export default function Returns() {
             returnedQuantities[item.product_id] = (returnedQuantities[item.product_id] || 0) + item.quantity;
           });
         });
-
         const items = order.items.map(item => {
           const alreadyReturned = returnedQuantities[item.product_id] || 0;
           const maxAvailable = Math.max(0, item.quantity - alreadyReturned);
@@ -91,9 +90,8 @@ export default function Returns() {
         });
         setFoundOrder(order);
         setSelectedItems(items);
-        // Electronics detection for restocking fee (example)
         const hasElectronics = items.some(i => i.name.toLowerCase().includes('electronic') || i.name.toLowerCase().includes('laptop') || i.name.toLowerCase().includes('phone'));
-        setRestockingFee(hasElectronics ? 200 : 0);
+        setRestockingFee(hasElectronics ? 50 : 0);
       } else {
         toast.error('Order not found');
         setFoundOrder(null);
@@ -109,7 +107,7 @@ export default function Returns() {
     if (!newItems[index].selected) newItems[index].quantity = 0;
     setSelectedItems(newItems);
     const hasSelectedElectronics = newItems.some(i => i.selected && (i.name.toLowerCase().includes('electronic') || i.name.toLowerCase().includes('laptop') || i.name.toLowerCase().includes('phone')));
-    setRestockingFee(hasSelectedElectronics ? 200 : 0);
+    setRestockingFee(hasSelectedElectronics ? 50 : 0);
   };
 
   const updateQuantity = (index, value) => {
@@ -123,17 +121,30 @@ export default function Returns() {
   };
 
   const calculateRefund = () => {
-    let totalRefund = 0;
+    let totalOriginalPrice = 0;
     let selectedProductTypes = 0;
     for (let item of selectedItems) {
       if (item.selected && item.quantity > 0) {
-        totalRefund += item.unit_price * item.quantity;
+        totalOriginalPrice += item.unit_price * item.quantity;
         selectedProductTypes++;
       }
     }
     const nonRefundableDeduction = selectedProductTypes * NON_REFUNDABLE_FEE;
-    const finalRefund = Math.max(0, totalRefund - restockingFee - nonRefundableDeduction);
-    return { totalRefund, finalRefund, nonRefundableDeduction };
+    const vatDeduction = totalOriginalPrice * VAT_RATE;
+    const finalRefund = Math.max(0, totalOriginalPrice - restockingFee - nonRefundableDeduction - incurredExpense - vatDeduction);
+    return { totalOriginalPrice, finalRefund, nonRefundableDeduction, vatDeduction };
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEvidenceImage(reader.result);
+        setEvidencePreview(URL.createObjectURL(file));
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSubmit = async () => {
@@ -153,15 +164,18 @@ export default function Returns() {
     }
     setProcessing(true);
     try {
-      await api.post('/returns', {
+      const payload = {
         order_id: foundOrder.id,
         items: selected,
         reason: reason,
         refund_amount: finalRefund,
         refund_method: refundMethod,
         warranty_ok: warrantyOk,
-        restocking_fee: restockingFee
-      });
+        restocking_fee: restockingFee,
+        incurred_expense: incurredExpense,
+        image: evidenceImage || null
+      };
+      await api.post('/returns', payload);
       toast.success('Return processed successfully');
       setFoundOrder(null);
       setSearchOrder('');
@@ -169,6 +183,9 @@ export default function Returns() {
       setReason('');
       setWarrantyOk(false);
       setRestockingFee(0);
+      setIncurredExpense(0);
+      setEvidenceImage(null);
+      setEvidencePreview(null);
       fetchReturns();
       fetchReturnedItems();
     } catch (err) {
@@ -178,7 +195,7 @@ export default function Returns() {
     }
   };
 
-  // ----- Returned Goods Engine Actions (unchanged) -----
+  // ----- Returned Goods Engine Actions -----
   const handleOpenBox = async (item) => {
     if (!openBoxPrice || parseFloat(openBoxPrice) <= 0) {
       toast.error('Enter a valid price');
@@ -226,6 +243,7 @@ export default function Returns() {
   };
 
   const pendingItems = returnedItems.filter(i => i.status === 'pending');
+  const imageUrl = (path) => path ? `http://localhost:8000/storage/${path}` : null;
 
   if (loading) return <div className="p-8 text-center">Loading...</div>;
 
@@ -259,7 +277,7 @@ export default function Returns() {
                   <thead className="bg-gray-100">
                     <tr>
                       <th className="p-2 text-left">Product</th>
-                      <th className="p-2 text-left">Max Qty (remaining)</th>
+                      <th className="p-2 text-left">Max Qty</th>
                       <th className="p-2 text-left">Return?</th>
                       <th className="p-2 text-left">Qty to Return</th>
                       <th className="p-2 text-left">Unit Price</th>
@@ -271,23 +289,10 @@ export default function Returns() {
                         <td className="p-2">{item.name}</td>
                         <td className="p-2">{item.max_quantity}</td>
                         <td className="p-2">
-                          <input
-                            type="checkbox"
-                            checked={item.selected}
-                            onChange={() => toggleItem(idx)}
-                            disabled={item.max_quantity === 0}
-                          />
+                          <input type="checkbox" checked={item.selected} onChange={() => toggleItem(idx)} disabled={item.max_quantity === 0} />
                         </td>
                         <td className="p-2">
-                          <input
-                            type="number"
-                            min="0"
-                            max={item.max_quantity}
-                            value={item.quantity}
-                            onChange={(e) => updateQuantity(idx, e.target.value)}
-                            disabled={!item.selected || item.max_quantity === 0}
-                            className="w-20 border p-1 rounded disabled:bg-gray-100"
-                          />
+                          <input type="number" min="0" max={item.max_quantity} value={item.quantity} onChange={(e) => updateQuantity(idx, e.target.value)} disabled={!item.selected || item.max_quantity === 0} className="w-20 border p-1 rounded disabled:bg-gray-100" />
                         </td>
                         <td className="p-2">Ksh {item.unit_price}</td>
                       </tr>
@@ -297,7 +302,32 @@ export default function Returns() {
               </div>
               <div className="mt-4 p-3 bg-amber-50 rounded-xl flex justify-between"><span>Restocking fee (Electronics):</span><span className="font-semibold">Ksh {restockingFee}</span></div>
               <div className="mt-2 p-3 bg-blue-50 rounded-xl flex justify-between"><span>Non‑refundable fee (Ksh {NON_REFUNDABLE_FEE} per product):</span><span className="font-semibold">Ksh {calculateRefund().nonRefundableDeduction}</span></div>
-              <div className="mt-2 p-3 bg-green-50 rounded-xl flex justify-between"><span>Total refund after fees:</span><span className="font-bold text-green-700">Ksh {calculateRefund().finalRefund}</span></div>
+              <div className="mt-2 p-3 bg-purple-50 rounded-xl flex justify-between"><span>VAT Deduction (16%):</span><span className="font-semibold">Ksh {calculateRefund().vatDeduction.toFixed(2)}</span></div>
+              <div className="mt-2">
+                <label className="block text-sm font-medium mb-1">Incurred Expense (e.g., shipping, handling)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={incurredExpense}
+                  onChange={e => setIncurredExpense(parseFloat(e.target.value) || 0)}
+                  className="border p-2 rounded-xl w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="mt-2 p-3 bg-green-50 rounded-xl flex justify-between"><span>Total refund after fees & deductions:</span><span className="font-bold text-green-700">Ksh {calculateRefund().finalRefund.toFixed(2)}</span></div>
+
+              {/* Evidence Image Upload */}
+              <div className="mt-4">
+                <label className="block text-sm font-medium mb-1">Upload Evidence (Photo of damage/defect)</label>
+                <input type="file" accept="image/*" onChange={handleImageChange} className="border p-2 rounded-xl w-full" />
+                {evidencePreview && (
+                  <div className="mt-2">
+                    <img src={evidencePreview} alt="Evidence" className="w-32 h-32 object-cover rounded border" />
+                    <button onClick={() => { setEvidenceImage(null); setEvidencePreview(null); }} className="text-red-500 text-sm mt-1">Remove</button>
+                  </div>
+                )}
+              </div>
+
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium mb-1">Reason</label><textarea value={reason} onChange={e => setReason(e.target.value)} className="border p-2 rounded-xl w-full" rows="2" /></div>
                 <div><label className="block text-sm font-medium mb-1">Refund Method</label><select value={refundMethod} onChange={e => setRefundMethod(e.target.value)} className="border p-2 rounded-xl w-full"><option value="cash">Cash</option><option value="mpesa">M-Pesa</option><option value="card">Card</option><option value="credit_note">Credit Note</option></select></div>
@@ -317,31 +347,36 @@ export default function Returns() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="p-4">Product</th>
-                  <th className="p-4">Quantity</th>
-                  <th className="p-4">Condition</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4">Open Box Price</th>
-                  <th className="p-4">Disposal Reason</th>
+                  <th>Quantity</th>
+                  <th>Condition</th>
+                  <th>Status</th>
+                  <th>Open Box Price</th>
+                  <th>Disposal Reason</th>
+                  <th>Return Image</th>
                 </tr>
               </thead>
               <tbody>
-                {returnedItems.map(item => (
-                  <tr key={item.id} className="border-b">
-                    <td className="p-4 font-medium">{item.product?.name}</td>
-                    <td className="p-4">{item.quantity}</td>
-                    <td className="p-4 capitalize">{item.condition}</td>
-                    <td className="p-4 capitalize">{item.status}</td>
-                    <td className="p-4">{item.open_box_price ? `Ksh ${item.open_box_price}` : '-'}</td>
-                    <td className="p-4">{item.disposal_reason || '-'}</td>
-                  </tr>
-                ))}
+                {returnedItems.map(item => {
+                  const parentReturn = returns.find(r => r.id === item.return_id);
+                  return (
+                    <tr key={item.id} className="border-b">
+                      <td className="p-4">{item.product?.name}</td>
+                      <td className="p-4">{item.quantity}</td>
+                      <td className="p-4 capitalize">{item.condition}</td>
+                      <td className="p-4 capitalize">{item.status}</td>
+                      <td className="p-4">{item.open_box_price ? `Ksh ${item.open_box_price}` : '-'}</td>
+                      <td className="p-4">{item.disposal_reason || '-'}</td>
+                      <td className="p-4">{parentReturn?.image_path ? <a href={imageUrl(parentReturn.image_path)} target="_blank" className="text-blue-600 underline">View</a> : '-'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* Returned Goods Engine Tab */}
+      {/* Returned Goods Engine Tab – without Upload Image */}
       {activeTab === 'engine' && (
         <div className="bg-white rounded-2xl shadow-xl p-6">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Settings size={18} className="text-amber-500" /> Pending Returned Items – Vet & Decide</h2>

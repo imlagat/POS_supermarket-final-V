@@ -1,0 +1,4 @@
+...
+Schema::table('returns', function ($table) {
+    $table->string('image_path')->nullable();
+});

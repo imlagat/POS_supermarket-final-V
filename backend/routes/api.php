@@ -149,3 +149,5 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->post('/products/import', [App\Http\Controllers\ProductImportController::class, 'import'])->middleware('role:admin,manager');
 Route::middleware('auth:sanctum')->get('/open-box-items', [App\Http\Controllers\OpenBoxController::class, 'index']);
 Route::middleware('auth:sanctum')->get('/open-box-items', [App\Http\Controllers\OpenBoxController::class, 'index']);
+Route::middleware('auth:sanctum')->post('/returned-items/{returnedItem}/image', [App\Http\Controllers\ReturnedItemController::class, 'uploadImage'])->middleware('role:admin,manager');
+Route::middleware('auth:sanctum')->get('/reports/returned-items', [App\Http\Controllers\ReportController::class, 'returnedItems']);

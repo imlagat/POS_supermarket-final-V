@@ -7,6 +7,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class ReturnController extends Controller
 {
@@ -28,7 +29,8 @@ class ReturnController extends Controller
             'refund_amount' => 'required|numeric',
             'refund_method' => 'required|in:cash,mpesa,card,credit_note',
             'warranty_ok' => 'nullable|boolean',
-            'restocking_fee' => 'nullable|numeric'
+            'restocking_fee' => 'nullable|numeric',
+            'image' => 'nullable|string', // base64 encoded image
         ]);
 
         $order = Order::findOrFail($request->order_id);
@@ -72,6 +74,24 @@ class ReturnController extends Controller
 
         DB::beginTransaction();
         try {
+            // Handle image upload
+            $imagePath = null;
+            if ($request->filled('image')) {
+                $imageData = $request->input('image');
+                if (preg_match('/^data:image\/(\w+);base64,/', $imageData, $type)) {
+                    $imageData = substr($imageData, strpos($imageData, ',') + 1);
+                    $type = strtolower($type[1]); // jpg, png, etc.
+                    if (!in_array($type, ['jpg', 'jpeg', 'png', 'gif'])) {
+                        throw new \Exception('Invalid image type');
+                    }
+                    $imageData = base64_decode($imageData);
+                    $filename = 'return_' . time() . '_' . uniqid() . '.' . $type;
+                    $path = 'returns/' . $filename;
+                    Storage::disk('public')->put($path, $imageData);
+                    $imagePath = $path;
+                }
+            }
+
             $return = ReturnOrder::create([
                 'order_id' => $request->order_id,
                 'user_id' => auth()->id(),
@@ -79,6 +99,7 @@ class ReturnController extends Controller
                 'reason' => $request->reason,
                 'refund_amount' => $request->refund_amount,
                 'refund_method' => $request->refund_method,
+                'image_path' => $imagePath,
             ]);
 
             // Create returned items records – do NOT restock inventory
@@ -87,7 +108,7 @@ class ReturnController extends Controller
                     'return_id' => $return->id,
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
-                    'condition' => 'other', // default, can be updated later
+                    'condition' => 'other',
                     'status' => 'pending',
                 ]);
             }
