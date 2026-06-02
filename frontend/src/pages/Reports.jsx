@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../services/api';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { TrendingUp, ShoppingBag, Package, AlertCircle, Calendar, DollarSign, RefreshCw, Tag } from 'lucide-react';
+import { TrendingUp, ShoppingBag, Package, AlertCircle, DollarSign, RefreshCw, Tag } from 'lucide-react';
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('daily');
@@ -65,7 +65,6 @@ export default function Reports() {
         <TrendingUp className="text-amber-500" /> Sales Reports
       </h1>
 
-      {/* Period Tabs for Sales */}
       <div className="flex gap-2 mb-6 border-b">
         {['daily', 'weekly', 'monthly'].map((tab) => (
           <button
@@ -84,7 +83,6 @@ export default function Reports() {
         </button>
       </div>
 
-      {/* Sales Tabs Content */}
       {activeTab !== 'returns' && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -186,7 +184,6 @@ export default function Reports() {
         </>
       )}
 
-      {/* Returns Tab Content */}
       {activeTab === 'returns' && (
         <div className="bg-white rounded-2xl shadow-xl p-6">
           <div className="mb-6 flex gap-6">

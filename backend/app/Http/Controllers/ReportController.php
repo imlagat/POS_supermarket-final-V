@@ -32,7 +32,7 @@ class ReportController extends Controller
             });
 
         return response()->json([
-            'gross_sales' => (float) $grossSales,
+            'total_sales' => (float) $grossSales,
             'net_sales' => (float) $netSales,
             'total_refunds' => (float) $totalRefunds,
             'orders' => $ordersCount,
@@ -49,7 +49,6 @@ class ReportController extends Controller
         $orders = Order::where('status', 'completed')->whereDate('created_at', today())->count();
         return response()->json([
             'gross_sales' => (float) $grossSales,
-            'net_sales' => (float) ($grossSales - $refunds),
             'refunds' => (float) $refunds,
             'orders' => $orders
         ]);
@@ -64,7 +63,6 @@ class ReportController extends Controller
         $orders = Order::where('status', 'completed')->whereBetween('created_at', [$start, $end])->count();
         return response()->json([
             'gross_sales' => (float) $grossSales,
-            'net_sales' => (float) ($grossSales - $refunds),
             'refunds' => (float) $refunds,
             'orders' => $orders
         ]);
@@ -79,7 +77,6 @@ class ReportController extends Controller
         $orders = Order::where('status', 'completed')->whereBetween('created_at', [$start, $end])->count();
         return response()->json([
             'gross_sales' => (float) $grossSales,
-            'net_sales' => (float) ($grossSales - $refunds),
             'refunds' => (float) $refunds,
             'orders' => $orders
         ]);
@@ -126,7 +123,6 @@ class ReportController extends Controller
         return response()->json($lowStock);
     }
 
-    // NEW: Returned items report (fixed)
     public function returnedItems()
     {
         $items = ReturnedItem::with(['product', 'return.order.customer'])
